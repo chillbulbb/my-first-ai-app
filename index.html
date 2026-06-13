@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraWealth | 現代智慧記帳儀表板</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="AuraWealth 是一個精美的單網頁個人財務記帳本與儀表板，具備玻璃擬態設計、實時圖表分析、資料備份與模擬資料功能。">
+  
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Navigation Header -->
+  <header>
+    <div class="logo">
+      <i class="fa-solid fa-chart-pie"></i>
+      <span>AuraWealth</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary btn-sm" id="btn-mock-data" title="生成模擬資料以利測試">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> 模擬資料
+      </button>
+      <button class="btn btn-primary" id="btn-open-modal">
+        <i class="fa-solid fa-plus"></i> 新增交易
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main>
+    <!-- 1. Metrics Overview Dashboard -->
+    <section class="metrics-grid" aria-label="財務指標概覽">
+      <!-- Total Balance Card -->
+      <div class="glass-panel metric-card balance">
+        <div class="metric-info">
+          <h3>淨資產餘額</h3>
+          <div class="value" id="val-balance">$0</div>
+        </div>
+        <div class="metric-icon">
+          <i class="fa-solid fa-scale-balanced"></i>
+        </div>
+      </div>
+      
+      <!-- Income Card -->
+      <div class="glass-panel metric-card income">
+        <div class="metric-info">
+          <h3>當月總收入</h3>
+          <div class="value" id="val-income">$0</div>
+        </div>
+        <div class="metric-icon">
+          <i class="fa-solid fa-arrow-trend-up"></i>
+        </div>
+      </div>
+      
+      <!-- Expense Card -->
+      <div class="glass-panel metric-card expense">
+        <div class="metric-info">
+          <h3>當月總支出</h3>
+          <div class="value" id="val-expense">$0</div>
+        </div>
+        <div class="metric-icon">
+          <i class="fa-solid fa-arrow-trend-down"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Charts Visualization Section -->
+    <section class="charts-grid" aria-label="財務圖表分析">
+      <!-- Spend Trend Chart -->
+      <div class="glass-panel chart-card">
+        <h3><i class="fa-solid fa-chart-column" style="color: var(--color-primary)"></i> 每月支出趨勢</h3>
+        <div class="chart-container">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Category Breakdown Chart -->
+      <div class="glass-panel chart-card">
+        <h3><i class="fa-solid fa-chart-pie" style="color: var(--color-income)"></i> 支出類別佔比</h3>
+        <div class="chart-container">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Operations & Filter Panel -->
+    <section class="glass-panel control-panel" aria-label="交易清單篩選與操作">
+      <div class="filters-group">
+        <!-- Date/Month Filter -->
+        <select class="input-field" id="filter-month" aria-label="選擇月份">
+          <!-- Dynamically populated or Default Options -->
+          <option value="all">所有月份</option>
+        </select>
+
+        <!-- Category Filter -->
+        <select class="input-field" id="filter-category" aria-label="選擇類別">
+          <option value="all">所有類別</option>
+          <!-- Categories populated by JS -->
+        </select>
+
+        <!-- Search box -->
+        <div class="search-input-wrapper">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" class="input-field" id="search-note" placeholder="搜尋備忘或說明..." aria-label="搜尋交易">
+        </div>
+      </div>
+
+      <!-- Backup Actions -->
+      <div class="management-actions">
+        <button class="btn btn-secondary btn-sm" id="btn-export" title="將資料備份為 JSON 檔案">
+          <i class="fa-solid fa-download"></i> 匯出
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btn-import-trigger" title="從備份 JSON 檔案回復資料">
+          <i class="fa-solid fa-upload"></i> 匯入
+        </button>
+        <input type="file" id="file-import" accept=".json">
+        <button class="btn btn-danger btn-sm" id="btn-clear-all" title="刪除所有記帳資料">
+          <i class="fa-solid fa-trash-can"></i> 清空
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. Transactions List Section -->
+    <section class="glass-panel transactions-panel" aria-label="交易明細清單">
+      <h3>
+        <span><i class="fa-solid fa-list-ul" style="color: var(--color-info)"></i> 交易明細</span>
+        <span class="transactions-count" id="tx-count">共 0 筆交易</span>
+      </h3>
+      
+      <!-- Dynamic list container -->
+      <div class="transactions-list" id="transactions-container">
+        <!-- Empty state or Items will be populated here -->
+      </div>
+    </section>
+  </main>
+
+  <!-- Dialog Form Modal for adding transaction -->
+  <dialog id="transaction-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">記錄新交易</h3>
+        <button class="modal-close" id="btn-close-modal" aria-label="關閉彈窗">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Toggle Tabs for income/expense -->
+      <div class="type-toggle">
+        <button type="button" class="toggle-btn active" data-type="expense">支出 (Expense)</button>
+        <button type="button" class="toggle-btn" data-type="income">收入 (Income)</button>
+      </div>
+
+      <form id="transaction-form" method="dialog">
+        <!-- Amount input -->
+        <div class="form-group">
+          <label for="tx-amount">金額 *</label>
+          <input type="number" id="tx-amount" class="input-field" min="1" step="any" placeholder="請輸入金額" required>
+        </div>
+
+        <!-- Category selector -->
+        <div class="form-group">
+          <label for="tx-category">類別 *</label>
+          <select id="tx-category" class="input-field" required>
+            <!-- Dynamically populated options based on income/expense -->
+          </select>
+        </div>
+
+        <!-- Date selector -->
+        <div class="form-group">
+          <label for="tx-date">日期 *</label>
+          <input type="date" id="tx-date" class="input-field" required>
+        </div>
+
+        <!-- Description/Note input -->
+        <div class="form-group">
+          <label for="tx-note">備忘描述</label>
+          <input type="text" id="tx-note" class="input-field" placeholder="例如：午餐、薪水、買衣服..." maxlength="50">
+        </div>
+
+        <!-- Action buttons -->
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-modal">取消</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-form">確認儲存</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2026 AuraWealth. 採用現代 Web 技術打造的極簡智慧記帳本。</p>
+  </footer>
+
+  <!-- App Main Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
