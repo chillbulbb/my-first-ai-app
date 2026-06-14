@@ -1,21 +1,24 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AuraWealth | 現代智慧記帳儀表板</title>
   <!-- SEO Meta Tags -->
   <meta name="description" content="AuraWealth 是一個精美的單網頁個人財務記帳本與儀表板，具備玻璃擬態設計、實時圖表分析、資料備份與模擬資料功能。">
-  
+
   <!-- CSS Stylesheets -->
   <link rel="stylesheet" href="styles.css">
-  
+
   <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
-  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    crossorigin="anonymous">
+
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
 </head>
+
 <body>
 
   <!-- Navigation Header -->
@@ -28,6 +31,10 @@
       <button class="btn btn-secondary btn-sm" id="btn-mock-data" title="生成模擬資料以利測試">
         <i class="fa-solid fa-wand-magic-sparkles"></i> 模擬資料
       </button>
+      <button class="btn btn-secondary" id="btn-quick-camera" title="一鍵拍照記帳">
+        📷 一鍵拍照
+      </button>
+      <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display: none;">
       <button class="btn btn-primary" id="btn-open-modal">
         <i class="fa-solid fa-plus"></i> 新增交易
       </button>
@@ -48,7 +55,7 @@
           <i class="fa-solid fa-scale-balanced"></i>
         </div>
       </div>
-      
+
       <!-- Income Card -->
       <div class="glass-panel metric-card income">
         <div class="metric-info">
@@ -59,7 +66,7 @@
           <i class="fa-solid fa-arrow-trend-up"></i>
         </div>
       </div>
-      
+
       <!-- Expense Card -->
       <div class="glass-panel metric-card expense">
         <div class="metric-info">
@@ -134,7 +141,7 @@
         <span><i class="fa-solid fa-list-ul" style="color: var(--color-info)"></i> 交易明細</span>
         <span class="transactions-count" id="tx-count">共 0 筆交易</span>
       </h3>
-      
+
       <!-- Dynamic list container -->
       <div class="transactions-list" id="transactions-container">
         <!-- Empty state or Items will be populated here -->
@@ -185,6 +192,26 @@
           <input type="text" id="tx-note" class="input-field" placeholder="例如：午餐、薪水、買衣服..." maxlength="50">
         </div>
 
+        <!-- Photo Capture input -->
+        <div class="form-group">
+          <label>發票或明細照片</label>
+          <div class="photo-capture-wrapper">
+            <input type="file" id="tx-photo-input" accept="image/*" capture="environment" style="display: none;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-capture-photo">
+              <i class="fa-solid fa-camera"></i> 一鍵拍照 / 上傳
+            </button>
+            <button type="button" class="btn btn-danger btn-sm" id="btn-remove-photo" style="display: none;">
+              <i class="fa-solid fa-trash-can"></i> 移除照片
+            </button>
+          </div>
+          <!-- 照相後的照片預覽縮圖預留區塊 -->
+          <div id="camera-preview-thumbnail" class="mt-2" style="display: none;"></div>
+
+          <div class="photo-preview-container" id="photo-preview-box" style="display: none;">
+            <img id="photo-preview-img" src="" alt="照片預覽">
+          </div>
+        </div>
+
         <!-- Action buttons -->
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" id="btn-cancel-modal">取消</button>
@@ -199,7 +226,18 @@
     <p>&copy; 2026 AuraWealth. 採用現代 Web 技術打造的極簡智慧記帳本。</p>
   </footer>
 
+  <!-- Lightbox Modal for displaying large transaction photo -->
+  <dialog id="photo-lightbox">
+    <div class="lightbox-content">
+      <button class="lightbox-close" id="btn-close-lightbox" aria-label="關閉預覽">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <img id="lightbox-img" src="" alt="交易照片大圖">
+    </div>
+  </dialog>
+
   <!-- App Main Logic -->
   <script src="app.js"></script>
 </body>
+
 </html>

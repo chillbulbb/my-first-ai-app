@@ -5,10 +5,10 @@
 // 1. Categories Definition with Icons and HSL/Hex Colors
 const CATEGORIES = {
   expense: {
-    food: { label: '餐飲食品', icon: 'fa-utensils', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
-    shopping: { label: '服飾購物', icon: 'fa-bag-shopping', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.12)' },
-    transport: { label: '交通出行', icon: 'fa-car', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' },
-    entertainment: { label: '娛樂休閒', icon: 'fa-gamepad', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
+    food: { label: '餐飲', icon: 'fa-utensils', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+    shopping: { label: '服飾', icon: 'fa-bag-shopping', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.12)' },
+    transport: { label: '交通', icon: 'fa-car', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' },
+    entertainment: { label: '娛樂', icon: 'fa-gamepad', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
     home: { label: '居家生活', icon: 'fa-house', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.12)' },
     medical: { label: '醫療保健', icon: 'fa-heart-pulse', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)' },
     education: { label: '教育學習', icon: 'fa-graduation-cap', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.12)' },
@@ -27,6 +27,7 @@ let transactions = [];
 let currentType = 'expense'; // 'expense' or 'income'
 let trendChartInstance = null;
 let categoryChartInstance = null;
+let currentPhotoBase64 = null; // 暫存目前拍照/上傳的 Base64 圖片
 
 // DOM Elements
 const balanceValEl = document.getElementById('val-balance');
@@ -40,6 +41,8 @@ const categoryFilter = document.getElementById('filter-category');
 const searchNoteInput = document.getElementById('search-note');
 
 const btnOpenModal = document.getElementById('btn-open-modal');
+const btnQuickCamera = document.getElementById('btn-quick-camera');
+const cameraInput = document.getElementById('cameraInput');
 const btnCloseModal = document.getElementById('btn-close-modal');
 const btnCancelModal = document.getElementById('btn-cancel-modal');
 const transactionDialog = document.getElementById('transaction-dialog');
@@ -50,6 +53,18 @@ const formAmount = document.getElementById('tx-amount');
 const formCategory = document.getElementById('tx-category');
 const formDate = document.getElementById('tx-date');
 const formNote = document.getElementById('tx-note');
+
+// 拍照與燈箱相關 DOM
+const txPhotoInput = document.getElementById('tx-photo-input');
+const btnCapturePhoto = document.getElementById('btn-capture-photo');
+const btnRemovePhoto = document.getElementById('btn-remove-photo');
+const cameraPreviewThumbnail = document.getElementById('camera-preview-thumbnail');
+const photoPreviewBox = document.getElementById('photo-preview-box');
+const photoPreviewImg = document.getElementById('photo-preview-img');
+
+const photoLightbox = document.getElementById('photo-lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const btnCloseLightbox = document.getElementById('btn-close-lightbox');
 
 const btnMockData = document.getElementById('btn-mock-data');
 const btnExport = document.getElementById('btn-export');
@@ -162,12 +177,120 @@ function setupEventListeners() {
 
   // Clear All Data
   btnClearAll.addEventListener('click', clearAllData);
+
+  // 拍照按鈕觸發 file input
+  btnCapturePhoto.addEventListener('click', () => {
+    txPhotoInput.click();
+  });
+
+  // 一鍵拍照按鈕 (Header)
+  btnQuickCamera.addEventListener('click', () => {
+    cameraInput.click();
+  });
+
+  // 處理相片選取/拍攝與等比例壓縮
+  txPhotoInput.addEventListener('change', handlePhotoUpload);
+  cameraInput.addEventListener('change', (e) => {
+    handlePhotoUpload(e, true); // true 表示需要開啟彈窗
+  });
+
+  // 移除相片
+  btnRemovePhoto.addEventListener('click', removePhoto);
+
+  // 關閉燈箱
+  btnCloseLightbox.addEventListener('click', () => {
+    photoLightbox.close();
+  });
+
+  // 點擊燈箱背景關閉
+  photoLightbox.addEventListener('click', (e) => {
+    if (e.target === photoLightbox) {
+      photoLightbox.close();
+    }
+  });
+}
+
+// 處理相片上傳/拍攝，並使用 Canvas 進行等比例壓縮 (最大邊長 800px)
+function handlePhotoUpload(event, autoOpenModal = false) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = function () {
+      // 設定最大邊長限制
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 800;
+      let width = img.width;
+      let height = img.height;
+
+      // 等比例縮放
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+
+      // 建立 Canvas 進行繪製與壓縮
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 轉為 Base64（JPEG 格式，品質設為 0.85）
+      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+      // 如果需要自動開啟彈窗，先重設表單
+      if (autoOpenModal) {
+        setDefaultDate();
+        resetForm();
+        populateFormCategories();
+        transactionDialog.showModal();
+      }
+
+      // 儲存至暫存變數並更新 UI 預覽
+      currentPhotoBase64 = compressedBase64;
+      photoPreviewImg.src = compressedBase64;
+      photoPreviewBox.style.display = 'flex';
+      btnRemovePhoto.style.display = 'inline-flex';
+
+      // 更新縮圖預覽 (camera-preview-thumbnail)
+      if (cameraPreviewThumbnail) {
+        cameraPreviewThumbnail.innerHTML = `<img src="${compressedBase64}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid var(--color-primary);">`;
+        cameraPreviewThumbnail.style.display = 'block';
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// 移除暫存相片與清除 UI 預覽
+function removePhoto() {
+  currentPhotoBase64 = null;
+  txPhotoInput.value = '';
+  cameraInput.value = ''; // 同步清除
+  photoPreviewImg.src = '';
+  photoPreviewBox.style.display = 'none';
+  btnRemovePhoto.style.display = 'none';
+  if (cameraPreviewThumbnail) {
+    cameraPreviewThumbnail.innerHTML = '';
+    cameraPreviewThumbnail.style.display = 'none';
+  }
 }
 
 // Populate Category Filter dropdown with all categories
 function populateFilterCategories() {
   categoryFilter.innerHTML = '<option value="all">所有類別</option>';
-  
+
   // Add Expense Headers and Categories
   const expOptGroup = document.createElement('optgroup');
   expOptGroup.label = '支出類別';
@@ -212,6 +335,7 @@ function resetForm() {
     if (btn.getAttribute('data-type') === 'expense') btn.classList.add('active');
     else btn.classList.remove('active');
   });
+  removePhoto();
 }
 
 // Save New Transaction
@@ -232,7 +356,8 @@ function saveTransaction() {
     amount: amount,
     category: category,
     date: date,
-    note: note || getCategoryInfo(currentType, category).label
+    note: note || getCategoryInfo(currentType, category).label,
+    photo: currentPhotoBase64
   };
 
   transactions.push(newTx);
@@ -265,12 +390,12 @@ function populateMonthFilter(selectedMonth) {
 
   // Convert to sorted array descending
   const sortedMonths = Array.from(months).sort().reverse();
-  
+
   // Cache the current value
   const currentValue = selectedMonth || monthFilter.value || 'all';
 
   monthFilter.innerHTML = '<option value="all">所有月份</option>';
-  
+
   sortedMonths.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m;
@@ -346,7 +471,7 @@ function updateUI() {
 
   transactions.forEach(tx => {
     const txVal = parseFloat(tx.amount) || 0;
-    
+
     // Lifetime balance metrics
     if (tx.type === 'income') lifetimeIncome += txVal;
     else if (tx.type === 'expense') lifetimeExpense += txVal;
@@ -393,10 +518,14 @@ function updateUI() {
       const catInfo = getCategoryInfo(tx.type, tx.category);
       const row = document.createElement('div');
       row.className = 'transaction-row';
-      
+
       const isIncome = tx.type === 'income';
       const amountPrefix = isIncome ? '+' : '-';
       const amountClass = isIncome ? 'income' : 'expense';
+
+      const photoHtml = tx.photo
+        ? `<div class="t-photo-thumb" title="點擊檢視照片"><img src="${tx.photo}" alt="交易照片"></div>`
+        : '';
 
       row.innerHTML = `
         <div class="t-left">
@@ -409,6 +538,7 @@ function updateUI() {
           </div>
         </div>
         <div class="t-right">
+          ${photoHtml}
           <div class="t-details">
             <span class="t-amount ${amountClass}">${amountPrefix}${formatCurrency(tx.amount)}</span>
             <span class="t-date">${tx.date}</span>
@@ -423,6 +553,14 @@ function updateUI() {
       row.querySelector('.t-delete-btn').addEventListener('click', () => {
         deleteTransaction(tx.id);
       });
+
+      // 如果有照片，點擊開啟燈箱
+      if (tx.photo) {
+        row.querySelector('.t-photo-thumb').addEventListener('click', () => {
+          lightboxImg.src = tx.photo;
+          photoLightbox.showModal();
+        });
+      }
 
       transactionsContainer.appendChild(row);
     });
@@ -448,7 +586,7 @@ function renderTrendChart() {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const monthStr = `${yyyy}-${mm}`;
-    
+
     // Label display YYYY/MM
     monthLabels.push(`${yyyy}/${mm}`);
 
@@ -572,10 +710,10 @@ function renderCategoryChart(activeMonth) {
     categoryChartInstance.destroy();
   }
 
-  // If no expenses this month, render empty doughnut placeholder
+  // If no expenses this month, render empty pie placeholder
   if (chartData.length === 0) {
     categoryChartInstance = new Chart(ctx, {
-      type: 'doughnut',
+      type: 'pie',
       data: {
         labels: ['無支出記錄'],
         datasets: [{
@@ -587,7 +725,6 @@ function renderCategoryChart(activeMonth) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '75%',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -602,7 +739,7 @@ function renderCategoryChart(activeMonth) {
   }
 
   categoryChartInstance = new Chart(ctx, {
-    type: 'doughnut',
+    type: 'pie',
     data: {
       labels: chartLabels,
       datasets: [
@@ -618,7 +755,6 @@ function renderCategoryChart(activeMonth) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '72%',
       plugins: {
         legend: {
           position: 'right',
@@ -654,7 +790,7 @@ function generateMockData() {
 
   const today = new Date();
   const mockTransactions = [];
-  
+
   // Categories reference
   const expCategories = Object.keys(CATEGORIES.expense);
   const incCategories = Object.keys(CATEGORIES.income);
@@ -715,7 +851,7 @@ function generateMockData() {
       const expCat = expCategories[Math.floor(Math.random() * expCategories.length)];
       const notePool = expenseNotes[expCat];
       const note = notePool[Math.floor(Math.random() * notePool.length)];
-      
+
       // Amount generation based on category types
       let amount = 80 + Math.floor(Math.random() * 300);
       if (expCat === 'shopping') amount = 800 + Math.floor(Math.random() * 3000);
@@ -753,14 +889,14 @@ function exportData() {
   const dataStr = JSON.stringify(transactions, null, 2);
   const blob = new Blob([dataStr], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  
+
   const today = new Date();
   const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-  
+
   const tempLink = document.createElement('a');
   tempLink.href = url;
   tempLink.download = `aurawealth_backup_${dateStr}.json`;
-  
+
   document.body.appendChild(tempLink);
   tempLink.click();
   document.body.removeChild(tempLink);
@@ -773,10 +909,10 @@ function importData(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = function (e) {
     try {
       const parsed = JSON.parse(e.target.result);
-      
+
       // Simple structure validation
       if (!Array.isArray(parsed)) {
         throw new Error('匯入資料必須是 JSON 陣列！');
