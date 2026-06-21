@@ -11,6 +11,10 @@
   <!-- CSS Stylesheets -->
   <link rel="stylesheet" href="styles.css">
 
+  <!-- PWA Manifest & Mobile Theme Color -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6366f1">
+
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     crossorigin="anonymous">
@@ -21,6 +25,9 @@
 
 <body>
 
+
+
+
   <!-- Navigation Header -->
   <header>
     <div class="logo">
@@ -28,6 +35,11 @@
       <span>AuraWealth</span>
     </div>
     <div class="header-actions">
+
+      <button class="btn btn-secondary" id="btn-settings" onclick="toggleSettingsView()" title="系統進階設定">
+        <i class="fa-solid fa-gear"></i> 設定
+      </button>
+
       <button class="btn btn-secondary btn-sm" id="btn-mock-data" title="生成模擬資料以利測試">
         <i class="fa-solid fa-wand-magic-sparkles"></i> 模擬資料
       </button>
@@ -142,11 +154,127 @@
         <span class="transactions-count" id="tx-count">共 0 筆交易</span>
       </h3>
 
-      <!-- Dynamic list container -->
-      <div class="transactions-list" id="transactions-container">
-        <!-- Empty state or Items will be populated here -->
+      <!-- 📋 視角切換控制列（貼在交易明細區域內） -->
+      <div class="view-toggle-container" style="margin: 15px 0; display: flex; gap: 10px; justify-content: flex-end;">
+        <button onclick="switchView('list')" id="view-btn-list" class="filter-btn active"
+          style="padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.15); color: #fff; cursor: pointer; font-size: 13px; transition: all 0.3s;">📋
+          列表檢視</button>
+        <button onclick="switchView('calendar')" id="view-btn-calendar" class="filter-btn"
+          style="padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); cursor: pointer; font-size: 13px; transition: all 0.3s;">📅
+          日曆檢視</button>
       </div>
+
+      <!-- 1. 列表視角外殼（必須把原本顯示 5 筆交易的那個列表包起來） -->
+      <div id="view-container-list" style="display: block;">
+
+
+
+        <!-- 時間篩選控制列（貼在 h3 標題下方） -->
+        <div class="filter-container"
+          style="margin: 15px 0; display: flex; gap: 10px; justify-content: flex-start; flex-wrap: wrap;">
+          <button class="filter-btn active" id="filter-all" onclick="changePeriod('all')"
+            style="padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.2); color: #fff; cursor: pointer; backdrop-filter: blur(5px); transition: all 0.3s;">全部</button>
+          <button class="filter-btn" id="filter-today" onclick="changePeriod('today')"
+            style="padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.7); cursor: pointer; backdrop-filter: blur(5px); transition: all 0.3s;">今日</button>
+          <button class="filter-btn" id="filter-week" onclick="changePeriod('week')"
+            style="padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.7); cursor: pointer; backdrop-filter: blur(5px); transition: all 0.3s;">本週</button>
+          <button class="filter-btn" id="filter-month-btn" onclick="changePeriod('month')"
+            style="padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.7); cursor: pointer; backdrop-filter: blur(5px); transition: all 0.3s;">本月</button>
+          <button class="filter-btn" id="filter-year" onclick="changePeriod('year')"
+            style="padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.7); cursor: pointer; backdrop-filter: blur(5px); transition: all 0.3s;">今年</button>
+        </div>
+
+        <!-- Dynamic list container -->
+        <div class="transactions-list" id="transactions-container">
+          <!-- Empty state or Items will be populated here -->
+        </div>
+
+      </div> <!-- 關閉 view-container-list -->
+
+      <!-- 2. 新增：網格日曆檢視外殼 (預設隱藏 display: none) -->
+      <div id="view-container-calendar" style="display: none; animation: fadeIn 0.3s ease;">
+        <!-- 月份切換 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+          <h4 id="calendar-month-title" style="margin: 0; font-size: 16px; font-weight: 600; color: #fff;">2026 年 6 月
+          </h4>
+          <div style="display: flex; gap: 5px;">
+            <button onclick="moveCalendarMonth(-1)" class="btn btn-secondary" style="padding: 4px 10px;">◀</button>
+            <button onclick="setCurrentMonth()" class="btn btn-secondary"
+              style="padding: 4px 10px; font-size: 12px;">今天</button>
+            <button onclick="moveCalendarMonth(1)" class="btn btn-secondary" style="padding: 4px 10px;">▶</button>
+          </div>
+        </div>
+        <!-- 星期標頭 -->
+        <div
+          style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-weight: bold; margin-bottom: 8px; color: rgba(255,255,255,0.5); font-size: 13px;">
+          <div style="color: #ff6b6b;">日</div>
+          <div>一</div>
+          <div>二</div>
+          <div>三</div>
+          <div>四</div>
+          <div>五</div>
+          <div style="color: #4dadff;">六</div>
+        </div>
+        <!-- 日曆實體日期網格（由先前貼的 JS 自動動態畫格子） -->
+        <div id="calendar-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;"></div>
+      </div>
+
     </section>
+    <!-- ========================================== -->
+    <!-- 系統進階設定面板 (預設隱藏 display: none) -->
+    <!-- ========================================== -->
+    <div id="settings-panel" class="glass-panel"
+      style="display: none; margin: 20px 0; padding: 25px; border-radius: 16px; color: #fff; background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05);">
+      <h3
+        style="margin-top: 0; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;">
+        ⚙️ AuraWealth 系統進階設定</h3>
+
+      <!-- 功能 1：深淺色模式切換 -->
+      <div class="setting-item"
+        style="display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 4px;">主題外觀模式</div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.5);">切換深色（Dark）或淺色（Light）高質感視覺視覺</div>
+        </div>
+        <div>
+          <select id="setting-theme-select" onchange="changeThemeMode(this.value)"
+            style="background: rgba(0, 0, 0, 0.4); color: #fff; border: 1px solid rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 8px; cursor: pointer; outline: none;">
+            <option value="dark" style="color:#333;">🌌 深色極光 (預設)</option>
+            <option value="light" style="color:#333;">☀️ 明亮極簡</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 功能 2：AI 拍照自動辨識開關 -->
+      <div class="setting-item"
+        style="display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 4px;">AI 智慧發票辨識</div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.5);">開啟後，一鍵拍照將自動透過 Gemini 辨識發票的項目與金額</div>
+        </div>
+        <div>
+          <input type="checkbox" id="setting-ai-enable" checked
+            style="width: 45px; height: 22px; cursor: pointer; accent-color: #007bff;">
+        </div>
+      </div>
+
+      <!-- 功能 3：資料管理中心 -->
+      <div class="setting-item"
+        style="display: flex; justify-content: space-between; align-items: center; padding: 16px 0;">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 4px;">資料安全管理</div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.5);">重設並完全清空本地瀏覽器快取的所有記帳資料庫</div>
+        </div>
+        <div>
+          <button onclick="confirmClearAllData()"
+            style="background: #dc3545; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: background 0.3s;"
+            onmouseover="this.style.background='#c82333'" onmouseout="this.style.background='#dc3545'">
+            一鍵清空資料庫
+          </button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <!-- Dialog Form Modal for adding transaction -->
@@ -193,8 +321,7 @@
         </div>
 
         <!-- Photo Capture input -->
-        <div class="form-group">
-          <label>發票或明細照片</label>
+        <div class="form-group" <label>發票或明細照片</label>
           <div class="photo-capture-wrapper">
             <input type="file" id="tx-photo-input" accept="image/*" capture="environment" style="display: none;">
             <button type="button" class="btn btn-secondary btn-sm" id="btn-capture-photo">

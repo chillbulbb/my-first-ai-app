@@ -28,6 +28,70 @@ let currentType = 'expense'; // 'expense' or 'income'
 let trendChartInstance = null;
 let categoryChartInstance = null;
 let currentPhotoBase64 = null; // 暫存目前拍照/上傳的 Base64 圖片
+let currentPeriod = 'all'; // 篩選期間預設全部
+
+// === Gemini AI 辨識功能配置 ===
+const GEMINI_API_KEY = ''; // 請在此填入您的 Google Gemini API Key
+const GEMINI_MODEL = 'gemini-2.5-flash';
+
+// 利用 Gemini API 辨識圖片內容
+async function analyzeImageWithGemini(base64Data) {
+  if (!GEMINI_API_KEY) {
+    console.warn('Gemini API Key 尚未設定，跳過 AI 辨識。');
+    return;
+  }
+
+  try {
+    // UI 反饋：顯示辨識中狀態
+    const originalNotePlaceholder = formNote.placeholder;
+    const originalAmountPlaceholder = formAmount.placeholder;
+    formNote.placeholder = "正在利用 AI 辨識發票中...";
+    formAmount.placeholder = "辨識中...";
+
+    // 準備 API 請求
+    const base64Content = base64Data.split(',')[1];
+    const prompt = "這是一張發票或收據，請精準讀取圖中消費的『總金額（整數，不要任何符號）』與『品名項目（如：晚餐、加油）』，並以 JSON 格式回傳給我：{\"amount\": 數字, \"title\": \"品名\"}。不要包含 markdown 的 ```json 外殼。";
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: "image/jpeg", data: base64Content } }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+    const data = await response.json();
+    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // 解析 JSON (處理可能存在的 Markdown 標籤)
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      if (result.amount) formAmount.value = result.amount;
+      if (result.title) formNote.value = result.title;
+      console.log('AI 辨識結果:', result);
+    }
+
+    // 還原 Placeholder
+    formNote.placeholder = originalNotePlaceholder;
+    formAmount.placeholder = originalAmountPlaceholder;
+
+  } catch (error) {
+    console.error('Gemini 辨識發生錯誤:', error);
+    formNote.placeholder = "AI 辨識失敗";
+    setTimeout(() => {
+      formNote.placeholder = "例如：午餐、薪水、買衣服...";
+      formAmount.placeholder = "請輸入金額";
+    }, 2000);
+  }
+}
 
 // DOM Elements
 const balanceValEl = document.getElementById('val-balance');
@@ -267,6 +331,9 @@ function handlePhotoUpload(event, autoOpenModal = false) {
         cameraPreviewThumbnail.innerHTML = `<img src="${compressedBase64}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid var(--color-primary);">`;
         cameraPreviewThumbnail.style.display = 'block';
       }
+
+      // 背景發送至 Gemini AI 進行辨識
+      analyzeImageWithGemini(compressedBase64);
     };
     img.src = e.target.result;
   };
@@ -424,7 +491,7 @@ function updateUI() {
 
   // 2. Filter Transactions for rendering the list and calculations
   const filteredTxs = transactions.filter(tx => {
-    // Month filter check
+    // Month dropdown filter check
     if (selectedMonth !== 'all' && tx.date.substring(0, 7) !== selectedMonth) {
       return false;
     }
@@ -443,6 +510,23 @@ function updateUI() {
       const matchAmount = tx.amount.toString().includes(searchQuery);
       if (!matchNote && !matchCat && !matchAmount) {
         return false;
+      }
+    }
+    // Period button filter (today / week / month / year)
+    if (currentPeriod !== 'all') {
+      const itemDate = new Date(tx.date);
+      const now = new Date();
+      if (currentPeriod === 'today') {
+        if (itemDate.toDateString() !== now.toDateString()) return false;
+      } else if (currentPeriod === 'week') {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        if (itemDate < startOfWeek) return false;
+      } else if (currentPeriod === 'month') {
+        if (itemDate.getMonth() !== now.getMonth() || itemDate.getFullYear() !== now.getFullYear()) return false;
+      } else if (currentPeriod === 'year') {
+        if (itemDate.getFullYear() !== now.getFullYear()) return false;
       }
     }
     return true;
@@ -948,5 +1032,222 @@ function clearAllData() {
     saveToLocalStorage();
     updateUI();
     alert('已清除所有記帳記錄。');
+  }
+}
+// 1. 定義當前篩選期間，預設為 'all' (全部)
+
+
+// 2. 切換期間的函式（按鈕點擊時觸發）
+function changePeriod(period) {
+  currentPeriod = period;
+
+  // 切換按鈕的視覺高亮效果
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.background = '#fff';
+    btn.style.color = '#333';
+  });
+  const activeBtn = document.getElementById(period === 'month' ? 'filter-month-btn' : `filter-${period}`);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    activeBtn.style.background = '#007bff'; // 變成藍色高亮
+    activeBtn.style.color = '#fff';
+  }
+
+  // 重新渲染清單與圓餅圖
+  renderFilteredData();
+}
+
+// 3. 核心篩選與即時更新邏輯
+function renderFilteredData() {
+  // 直接呼叫 updateUI()，currentPeriod 已在 filter 邏輯裡被正確使用
+  updateUI();
+}
+
+// ==========================================
+// Setting 設定頁面切換與核心邏輯
+// ==========================================
+let isSettingsOpen = false;
+
+function toggleSettingsView() {
+  const main = document.querySelector('main');
+  const settingsPanel = document.getElementById('settings-panel');
+  const btnSettings = document.getElementById('btn-settings');
+
+  const isOpen = settingsPanel && settingsPanel.style.display === 'block';
+
+  if (isOpen) {
+    // 關閉設定面板，顯示主介面
+    if (settingsPanel) settingsPanel.style.display = 'none';
+    if (main) main.style.display = 'block';
+    if (btnSettings) {
+      btnSettings.innerHTML = '<i class="fa-solid fa-gear"></i> 設定';
+      btnSettings.style.background = 'rgba(255,255,255,0.05)';
+    }
+  } else {
+    // 開啟設定面板，隱藏主介面
+    if (settingsPanel) settingsPanel.style.display = 'block';
+    if (main) main.style.display = 'none';
+    if (btnSettings) {
+      btnSettings.innerHTML = '⬅️ 返回記帳';
+      btnSettings.style.background = 'rgba(255,255,255,0.15)';
+    }
+  }
+}
+// Duplicate toggleSettingsView implementation removed; using the earlier concise version defined above.
+
+// 刪除防呆提示
+function confirmClearAllData() {
+  if (confirm("⚠️ 警告：確定要清空所有的記帳歷史紀錄嗎？此動作將會清除所有資料且無法復原！")) {
+    localStorage.clear(); // 清空緩存
+    location.reload();    // 重新整理網頁
+  }
+}
+
+// 深淺色模式切換
+function changeThemeMode(mode) {
+  const root = document.documentElement;
+  if (mode === 'light') {
+    root.setAttribute('data-theme', 'light');
+    document.body.style.background = 'linear-gradient(135deg, #f0f4ff 0%, #e8edf5 50%, #dde4f0 100%)';
+    document.body.style.color = '#1a202c';
+  } else {
+    root.setAttribute('data-theme', 'dark');
+    document.body.style.background = '';
+    document.body.style.color = '';
+  }
+  localStorage.setItem('aurawealth_theme', mode);
+}
+
+// 頁面載入時恢復主題設定
+(function restoreTheme() {
+  const saved = localStorage.getItem('aurawealth_theme');
+  if (saved) {
+    const select = document.getElementById('setting-theme-select');
+    if (select) select.value = saved;
+    changeThemeMode(saved);
+  }
+})();
+// ==========================================
+// 📅 行事曆網格日曆（Calendar View）核心演算法
+// ==========================================
+let currentViewMode = 'list'; // 預設視角為列表
+let calendarTargetDate = new Date(); // 當前日曆顯示的基準月份時間
+
+// 1. 視角切換主功能
+function switchView(viewType) {
+  currentViewMode = viewType;
+  const listView = document.getElementById('view-container-list');
+  const calendarView = document.getElementById('view-container-calendar');
+  const btnList = document.getElementById('view-btn-list');
+  const btnCalendar = document.getElementById('view-btn-calendar');
+
+  if (viewType === 'list') {
+    if (listView) listView.style.display = 'block';
+    if (calendarView) calendarView.style.display = 'none';
+
+    // 按鈕視覺切換
+    btnList.style.background = 'rgba(255,255,255,0.15)';
+    btnList.style.color = '#fff';
+    btnCalendar.style.background = 'rgba(255,255,255,0.05)';
+    btnCalendar.style.color = 'rgba(255,255,255,0.6)';
+  } else {
+    if (listView) listView.style.display = 'none';
+    if (calendarView) calendarView.style.display = 'block';
+
+    btnCalendar.style.background = 'rgba(255,255,255,0.15)';
+    btnCalendar.style.color = '#fff';
+    btnList.style.background = 'rgba(255,255,255,0.05)';
+    btnList.style.color = 'rgba(255,255,255,0.6)';
+
+    renderCalendarGrid(); // 點擊日曆時，動態渲染格子
+  }
+}
+
+// 2. 切換月份控制（前一個月 / 後一個月）
+function moveCalendarMonth(direction) {
+  // 先把日期設成 1 號，避免月份切換時因為天數不同（如 31 號）產生溢出
+  calendarTargetDate.setDate(1);
+  calendarTargetDate.setMonth(calendarTargetDate.getMonth() + direction);
+  renderCalendarGrid();
+}
+
+function setCurrentMonth() {
+  calendarTargetDate = new Date();
+  renderCalendarGrid();
+}
+
+// 3. 核心：日曆格子渲染與每日花費累加引擎
+function renderCalendarGrid() {
+  const grid = document.getElementById('calendar-grid');
+  const monthTitle = document.getElementById('calendar-month-title');
+  if (!grid || !monthTitle) return;
+
+  grid.innerHTML = ''; // 清空舊格子
+
+  const year = calendarTargetDate.getFullYear();
+  const month = calendarTargetDate.getMonth();
+
+  // 更新日曆頂端標題（例如：2026 年 6 月）
+  monthTitle.innerText = `${year} 年 ${month + 1} 月`;
+
+  // 計算當月第一天是星期幾（使用中午 12:00 確保不受時區偏移跨天的影響）
+  const firstDayIndex = new Date(year, month, 1, 12, 0, 0).getDay();
+  // 計算當月總共有幾天
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  // 使用全域狀態的交易資料庫 (transactions)
+  const allData = transactions;
+
+  // 填補第一天之前的「前月空白格子」
+  for (let i = 0; i < firstDayIndex; i++) {
+    const blankCard = document.createElement('div');
+    blankCard.style.cssText = "padding: 6px 4px; min-height: 52px; visibility: hidden;";
+    grid.appendChild(blankCard);
+  }
+
+  // 開始繪製當月的 1 號到最後一天
+  const todayStr = new Date().toDateString();
+  for (let day = 1; day <= totalDays; day++) {
+    const dayCard = document.createElement('div');
+    dayCard.style.cssText = "border: 1px solid var(--panel-border-main); padding: 6px 4px; border-radius: 8px; background: var(--panel-bg); text-align: center; min-height: 52px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;";
+
+    // 日期數字
+    const dateNumber = document.createElement('div');
+    dateNumber.innerText = day;
+    dateNumber.style.cssText = "font-size: 11px; font-weight: 500; opacity: 0.8;";
+
+    // 判定星期六日變更數字顏色
+    const currentDayOfWeek = new Date(year, month, day, 12, 0, 0).getDay();
+    if (currentDayOfWeek === 0) dateNumber.style.color = '#ff6b6b';
+    if (currentDayOfWeek === 6) dateNumber.style.color = '#4dadff';
+
+    dayCard.appendChild(dateNumber);
+
+    // 如果是「今天」，幫格子套上高亮藍色細框
+    const checkDateString = new Date(year, month, day, 12, 0, 0).toDateString();
+    if (checkDateString === todayStr) {
+      dayCard.style.borderColor = '#007bff';
+      dayCard.style.boxShadow = '0 0 8px rgba(0,123,255,0.3)';
+    }
+
+    // 🧠 核心算法：找出這一天之中所有「支出(expense)」的帳目，並計算總額
+    const dayCost = allData
+      .filter(item => {
+        const itemDate = new Date(item.date || item.txDate);
+        // 檢查是否為同一天，且型態是支出（相容您的專案欄位）
+        return itemDate.toDateString() === checkDateString && (item.type === 'expense' || item.type === '支出' || !item.type);
+      })
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    // 如果當天有花錢，在格子下方顯示醒目的紅字總金額
+    if (dayCost > 0) {
+      const costLabel = document.createElement('div');
+      costLabel.innerText = `-${dayCost}`;
+      costLabel.style.cssText = "color: #ff4d4d; font-size: 10px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px;";
+      dayCard.appendChild(costLabel);
+    }
+
+    grid.appendChild(dayCard);
   }
 }
